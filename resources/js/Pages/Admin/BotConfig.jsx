@@ -27,11 +27,12 @@ export default function BotConfig({ settings, webhookUrl }) {
 
     const hasPdfFiles = data.pdf_registration || data.pdf_ib_step1 || data.pdf_ib_step2;
 
-    const saveSettings = (options = {}) => {
+    const postOptions = hasPdfFiles ? { forceFormData: true } : {};
+
+    const saveSettings = () => {
         post(route('admin.bot-config.update'), {
-            ...(hasPdfFiles ? { forceFormData: true } : {}),
+            ...postOptions,
             preserveScroll: true,
-            ...options,
         });
     };
 
@@ -41,10 +42,10 @@ export default function BotConfig({ settings, webhookUrl }) {
     };
 
     const setWebhook = () => {
-        saveSettings({
-            onSuccess: () => {
-                post(route('admin.bot-config.webhook'), { preserveScroll: true });
-            },
+        // Satu request: simpan form + set webhook (hindari race condition)
+        post(route('admin.bot-config.webhook'), {
+            ...postOptions,
+            preserveScroll: true,
         });
     };
 
@@ -153,7 +154,9 @@ export default function BotConfig({ settings, webhookUrl }) {
                                         className="mt-1 block w-full"
                                         value={data.hfm_referral_link}
                                         onChange={(e) => setData('hfm_referral_link', e.target.value)}
+                                        placeholder="https://..."
                                     />
+                                    <InputError message={errors.hfm_referral_link} />
                                 </div>
 
                                 <div>
@@ -162,7 +165,9 @@ export default function BotConfig({ settings, webhookUrl }) {
                                         className="mt-1 block w-full"
                                         value={data.hfm_api_url}
                                         onChange={(e) => setData('hfm_api_url', e.target.value)}
+                                        placeholder="https://..."
                                     />
+                                    <InputError message={errors.hfm_api_url} />
                                 </div>
 
                                 <div>
@@ -191,6 +196,7 @@ export default function BotConfig({ settings, webhookUrl }) {
                                         value={data.min_deposit}
                                         onChange={(e) => setData('min_deposit', e.target.value)}
                                     />
+                                    <InputError message={errors.min_deposit} />
                                 </div>
                             </div>
                         </div>

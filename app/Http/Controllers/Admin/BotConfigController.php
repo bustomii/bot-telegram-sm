@@ -22,16 +22,43 @@ class BotConfigController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $request->merge([
-            'community_link' => $request->input('community_link') ?: null,
-            'hfm_referral_link' => $request->input('hfm_referral_link') ?: null,
-            'hfm_api_url' => $request->input('hfm_api_url') ?: null,
-            'telegram_bot_token' => $request->input('telegram_bot_token') ?: null,
-            'telegram_webhook_secret' => $request->input('telegram_webhook_secret') ?: null,
-            'admin_group_chat_id' => $request->input('admin_group_chat_id') ?: null,
-            'hfm_api_key' => $request->input('hfm_api_key') ?: null,
-            'hfm_ib_id' => $request->input('hfm_ib_id') ?: null,
-        ]);
+        $this->persistSettings($request);
+
+        return back()->with('success', 'Konfigurasi bot berhasil disimpan.');
+    }
+
+    public function setWebhook(Request $request): RedirectResponse
+    {
+        $this->persistSettings($request);
+
+        $settings = BotSetting::current()->fresh();
+
+        if (empty($settings->telegram_bot_token)) {
+            return back()->with('error', 'Bot Token wajib diisi sebelum set webhook.');
+        }
+
+        $url = route('telegram.webhook');
+        $result = TelegramService::make()->setWebhook($url);
+
+        if (($result['ok'] ?? false) === true) {
+            return back()->with('success', "Webhook Telegram berhasil diatur ke: {$url}");
+        }
+
+        $errorCode = $result['error_code'] ?? null;
+        $description = $result['description'] ?? 'Unknown error';
+
+        $message = match ($errorCode) {
+            404 => 'Bot Token tidak valid. Salin ulang token dari @BotFather, simpan konfigurasi, lalu coba lagi.',
+            401 => 'Bot Token ditolak oleh Telegram. Pastikan token benar dan bot belum dihapus.',
+            default => "Gagal mengatur webhook: {$description}",
+        };
+
+        return back()->with('error', $message);
+    }
+
+    private function persistSettings(Request $request): void
+    {
+        $this->normalizeConfigInput($request);
 
         $validated = $request->validate([
             'telegram_bot_token' => 'nullable|string',
@@ -54,8 +81,6 @@ class BotConfigController extends Controller
             $validated['telegram_bot_token'] = trim($validated['telegram_bot_token']);
         }
 
-        $settings = BotSetting::current();
-
         foreach (['pdf_registration', 'pdf_ib_step1', 'pdf_ib_step2'] as $field) {
             if ($request->hasFile($field)) {
                 $path = $request->file($field)->store('pdfs', 'public');
@@ -65,39 +90,31 @@ class BotConfigController extends Controller
             }
         }
 
-        if (! array_key_exists('is_active', $validated)) {
-            $validated['is_active'] = false;
-        }
+        $validated['is_active'] = $request->boolean('is_active');
 
-        $settings->update($validated);
-
-        return back()->with('success', 'Konfigurasi bot berhasil disimpan.');
+        BotSetting::current()->update($validated);
     }
 
-    public function setWebhook(): RedirectResponse
+    private function normalizeConfigInput(Request $request): void
     {
-        $settings = BotSetting::current();
-
-        if (empty($settings->telegram_bot_token)) {
-            return back()->with('error', 'Bot Token belum disimpan. Klik "Simpan Konfigurasi" terlebih dahulu.');
+        foreach ([
+            'community_link',
+            'hfm_referral_link',
+            'hfm_api_url',
+            'telegram_webhook_secret',
+            'admin_group_chat_id',
+            'hfm_api_key',
+            'hfm_ib_id',
+        ] as $field) {
+            if ($request->has($field) && $request->input($field) === '') {
+                $request->merge([$field => null]);
+            }
         }
 
-        $url = route('telegram.webhook');
-        $result = TelegramService::make()->setWebhook($url);
-
-        if (($result['ok'] ?? false) === true) {
-            return back()->with('success', "Webhook Telegram berhasil diatur ke: {$url}");
+        if ($request->has('telegram_bot_token') && is_string($request->input('telegram_bot_token'))) {
+            $request->merge([
+                'telegram_bot_token' => trim($request->input('telegram_bot_token')) ?: null,
+            ]);
         }
-
-        $errorCode = $result['error_code'] ?? null;
-        $description = $result['description'] ?? 'Unknown error';
-
-        $message = match ($errorCode) {
-            404 => 'Bot Token tidak valid. Salin ulang token dari @BotFather, simpan konfigurasi, lalu coba lagi.',
-            401 => 'Bot Token ditolak oleh Telegram. Pastikan token benar dan bot belum dihapus.',
-            default => "Gagal mengatur webhook: {$description}",
-        };
-
-        return back()->with('error', $message);
     }
 }
