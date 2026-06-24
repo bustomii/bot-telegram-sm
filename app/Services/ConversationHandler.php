@@ -16,6 +16,7 @@ class ConversationHandler
 
     private const GREETING_TRIGGERS = ['halo', 'kak', 'join', 'mau join', 'hi', 'hello'];
     private const HELP_TRIGGERS = ['kendala', 'error', 'gagal', 'tidak bisa', 'bingung', 'help', 'bantuan'];
+    private const RESTART_TRIGGERS = ['chat ulang', 'mulai lagi', 'mulai ulang', 'restart', 'reset', 'ulang'];
 
     public function __construct()
     {
@@ -63,27 +64,201 @@ class ConversationHandler
             return;
         }
 
+        $lead->update([
+            'telegram_username' => $user['username'] ?? $lead->telegram_username,
+            'last_activity_at' => now(),
+        ]);
+
+        if ($this->isStartCommand($text) || $this->isRestartTrigger($text)) {
+            $this->handleRestartOrStart($lead, $chatId);
+
+            return;
+        }
+
         if ($this->isHelpTrigger($text)) {
             $this->startHelpFlow($lead, $chatId);
 
             return;
         }
 
-        if ($lead->status === LeadStatus::Lead && $this->isGreeting($text, $message)) {
-            $this->sendWelcome($lead, $chatId);
+        if ($this->isGreeting($text, $message)) {
+            $this->handleGreeting($lead, $chatId);
 
             return;
         }
 
-        match ($lead->conversation_step) {
-            'awaiting_name' => $this->handleName($lead, $chatId, $text),
-            'awaiting_purpose' => $this->handlePurpose($lead, $chatId, $text),
-            'awaiting_experience' => $this->handleExperience($lead, $chatId, $text),
-            'awaiting_hfm_status' => null,
-            'awaiting_account_data' => $this->handleAccountData($lead, $chatId, $text),
-            'awaiting_help_detail' => $this->handleHelpDetail($lead, $chatId, $text, $message),
-            default => $this->handleByStatus($lead, $chatId, $text),
+        if ($this->isCompletedStatus($lead->status)) {
+            $this->handleCompletedStatusMessage($lead, $chatId, $text);
+
+            return;
+        }
+
+        if ($lead->conversation_step) {
+            match ($lead->conversation_step) {
+                'awaiting_name' => $this->handleName($lead, $chatId, $text),
+                'awaiting_purpose' => $this->handlePurpose($lead, $chatId, $text),
+                'awaiting_experience' => $this->handleExperience($lead, $chatId, $text),
+                'awaiting_hfm_status' => $this->remindHfmStatusChoice($lead, $chatId),
+                'awaiting_account_data' => $this->handleAccountData($lead, $chatId, $text),
+                'awaiting_help_detail' => $this->handleHelpDetail($lead, $chatId, $text, $message),
+                default => $this->handleByStatus($lead, $chatId, $text),
+            };
+
+            return;
+        }
+
+        $this->handleByStatus($lead, $chatId, $text);
+    }
+
+    private function isStartCommand(string $text): bool
+    {
+        $lower = strtolower(trim($text));
+
+        return $lower === '/start' || str_starts_with($lower, '/start ');
+    }
+
+    private function isRestartTrigger(string $text): bool
+    {
+        $lower = strtolower(trim($text));
+
+        foreach (self::RESTART_TRIGGERS as $trigger) {
+            if (str_contains($lower, $trigger)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isCompletedStatus(?LeadStatus $status): bool
+    {
+        if (! $status) {
+            return false;
+        }
+
+        return in_array($status, [
+            LeadStatus::Active,
+            LeadStatus::Approved,
+            LeadStatus::Verified,
+            LeadStatus::PendingReview,
+            LeadStatus::Rejected,
+        ], true);
+    }
+
+    private function handleRestartOrStart(Lead $lead, int $chatId): void
+    {
+        if ($lead->status === LeadStatus::Active) {
+            $this->sendActiveMemberMessage($lead, $chatId);
+
+            return;
+        }
+
+        if (in_array($lead->status, [LeadStatus::Verified, LeadStatus::PendingReview, LeadStatus::Approved], true)) {
+            $this->sendPendingAdminMessage($lead, $chatId);
+
+            return;
+        }
+
+        $this->restartConversation($lead, $chatId);
+    }
+
+    private function handleGreeting(Lead $lead, int $chatId): void
+    {
+        if ($lead->status === LeadStatus::Active) {
+            $this->sendActiveMemberMessage($lead, $chatId);
+
+            return;
+        }
+
+        if (in_array($lead->status, [LeadStatus::Verified, LeadStatus::PendingReview, LeadStatus::Approved], true)) {
+            $this->sendPendingAdminMessage($lead, $chatId);
+
+            return;
+        }
+
+        if ($lead->status === LeadStatus::Rejected) {
+            $this->sendRejectedMessage($lead, $chatId);
+
+            return;
+        }
+
+        $this->sendWelcome($lead, $chatId);
+    }
+
+    private function handleCompletedStatusMessage(Lead $lead, int $chatId, string $text): void
+    {
+        match ($lead->status) {
+            LeadStatus::Active => $this->sendActiveMemberMessage($lead, $chatId),
+            LeadStatus::Verified, LeadStatus::PendingReview, LeadStatus::Approved => $this->sendPendingAdminMessage($lead, $chatId),
+            LeadStatus::Rejected => $this->sendRejectedMessage($lead, $chatId),
+            default => null,
         };
+    }
+
+    private function restartConversation(Lead $lead, int $chatId): void
+    {
+        $lead->transitionTo(LeadStatus::Lead, 'conversation_restarted');
+        $this->sendWelcome($lead, $chatId);
+    }
+
+    private function sendActiveMemberMessage(Lead $lead, int $chatId): void
+    {
+        $link = $this->settings->community_link ?? 'https://t.me/your_community';
+        $name = $lead->name ?? 'Kak';
+
+        $this->telegram->sendMessage(
+            $chatId,
+            "Halo {$name} 👋\n\nKakak sudah terdaftar sebagai member aktif komunitas kami.\n\nSilakan bergabung atau kembali ke grup melalui link berikut:\n\n{$link}\n\nJika ada kendala, ketik <b>bantuan</b> atau tekan tombol di bawah.",
+            TelegramService::inlineKeyboard([
+                [TelegramService::button('ADA KENDALA', 'need_help')],
+            ])
+        );
+    }
+
+    private function sendPendingAdminMessage(Lead $lead, int $chatId): void
+    {
+        $name = $lead->name ?? 'Kak';
+
+        $this->telegram->sendMessage(
+            $chatId,
+            "Halo {$name} 👋\n\nData Kakak sedang dalam proses verifikasi oleh tim admin. Mohon tunggu sebentar 🙏\n\nJika ada kendala, ketik <b>bantuan</b>.",
+            TelegramService::inlineKeyboard([
+                [TelegramService::button('ADA KENDALA', 'need_help')],
+            ])
+        );
+    }
+
+    private function sendRejectedMessage(Lead $lead, int $chatId): void
+    {
+        $reason = $lead->reject_reason ? "\n\nAlasan: {$lead->reject_reason}" : '';
+
+        $this->telegram->sendMessage(
+            $chatId,
+            "Halo Kak 👋\n\nMohon maaf, pendaftaran sebelumnya belum dapat disetujui.{$reason}\n\nJika ingin mengajukan ulang, ketik <b>chat ulang</b> atau kirim /start.",
+            TelegramService::inlineKeyboard([
+                [TelegramService::button('MULAI ULANG', 'restart_flow')],
+                [TelegramService::button('ADA KENDALA', 'need_help')],
+            ])
+        );
+    }
+
+    private function remindHfmStatusChoice(Lead $lead, int $chatId): void
+    {
+        $this->telegram->sendMessage(
+            $chatId,
+            'Silakan pilih status akun HFM menggunakan tombol di bawah.',
+            TelegramService::inlineKeyboard([
+                [
+                    TelegramService::button('SUDAH PUNYA AKUN HFM', 'has_hfm'),
+                    TelegramService::button('BELUM PUNYA AKUN HFM', 'no_hfm'),
+                ],
+            ])
+        );
+    }
+
+    private function clearConversationStep(Lead $lead): void
+    {
+        $lead->update(['conversation_step' => null]);
     }
 
     private function handleCallback(array $callback): void
@@ -130,6 +305,7 @@ class ConversationHandler
             'help_deposit' => $this->selectHelpType($lead, $chatId, LeadStatus::NeedHelpDeposit, 'Deposit Belum Masuk'),
             'help_data' => $this->selectHelpType($lead, $chatId, LeadStatus::NeedHelpData, 'Data Tidak Terbaca'),
             'help_other' => $this->selectHelpType($lead, $chatId, LeadStatus::NeedHelpOther, 'Kendala Lainnya'),
+            'restart_flow' => $this->restartConversation($lead, $chatId),
             default => null,
         };
     }
@@ -367,6 +543,7 @@ class ConversationHandler
 
         if (! $result['found']) {
             $lead->transitionTo(LeadStatus::DataNotFound, 'hfm_data_not_found');
+            $this->clearConversationStep($lead);
             $this->telegram->sendMessage(
                 $chatId,
                 "Data akun tidak ditemukan.\n\nSilakan periksa kembali data yang dikirim.",
@@ -390,6 +567,7 @@ class ConversationHandler
 
         if (! $this->hfm->isIbMatch($result['ib_status'])) {
             $lead->transitionTo(LeadStatus::IbNotMatch, 'ib_not_match');
+            $this->clearConversationStep($lead);
             $this->telegram->sendMessage(
                 $chatId,
                 "Akun belum berada di jaringan IB komunitas.\n\nSilakan lakukan proses Ubah IB terlebih dahulu.",
@@ -403,6 +581,7 @@ class ConversationHandler
 
         if (! $this->hfm->meetsMinDeposit($result['deposit'])) {
             $lead->transitionTo(LeadStatus::WaitingDeposit, 'waiting_deposit');
+            $this->clearConversationStep($lead);
             $this->telegram->sendMessage(
                 $chatId,
                 "Saldo akun saat ini belum memenuhi syarat minimum bergabung komunitas yaitu \${$this->settings->min_deposit}.\n\nSilakan lakukan deposit minimal \${$this->settings->min_deposit} untuk melanjutkan proses bergabung.",
@@ -416,6 +595,7 @@ class ConversationHandler
         }
 
         $lead->transitionTo(LeadStatus::Verified, 'hfm_verified');
+        $this->clearConversationStep($lead);
         $this->notifyAdminForApproval($lead);
         $this->telegram->sendMessage($chatId, "Data Kakak sedang diverifikasi oleh tim admin. Mohon tunggu sebentar 🙏");
     }
@@ -474,6 +654,7 @@ class ConversationHandler
     public function approveMember(Lead $lead): void
     {
         $lead->transitionTo(LeadStatus::Active, 'admin_approved');
+        $this->clearConversationStep($lead);
         $link = $this->settings->community_link ?? 'https://t.me/your_community';
         $this->telegram->sendMessage(
             $lead->telegram_id,
