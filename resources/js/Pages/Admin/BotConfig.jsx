@@ -8,7 +8,7 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 export default function BotConfig({ settings, webhookUrl }) {
     const { flash } = usePage().props;
 
-    const { data, setData, post, put, processing, errors } = useForm({
+    const { data, setData, post, processing, errors } = useForm({
         telegram_bot_token: settings.telegram_bot_token ?? '',
         telegram_webhook_secret: settings.telegram_webhook_secret ?? '',
         admin_group_chat_id: settings.admin_group_chat_id ?? '',
@@ -25,15 +25,23 @@ export default function BotConfig({ settings, webhookUrl }) {
         pdf_ib_step2: null,
     });
 
+    const hasPdfFiles = data.pdf_registration || data.pdf_ib_step1 || data.pdf_ib_step2;
+
+    const saveSettings = (options = {}) => {
+        post(route('admin.bot-config.update'), {
+            ...(hasPdfFiles ? { forceFormData: true } : {}),
+            preserveScroll: true,
+            ...options,
+        });
+    };
+
     const submit = (e) => {
         e.preventDefault();
-        put(route('admin.bot-config.update'), { forceFormData: true });
+        saveSettings();
     };
 
     const setWebhook = () => {
-        put(route('admin.bot-config.update'), {
-            forceFormData: true,
-            preserveScroll: true,
+        saveSettings({
             onSuccess: () => {
                 post(route('admin.bot-config.webhook'), { preserveScroll: true });
             },
@@ -57,6 +65,11 @@ export default function BotConfig({ settings, webhookUrl }) {
                     )}
                     {flash?.error && (
                         <div className="mb-4 rounded-md bg-red-50 p-4 text-red-800">{flash.error}</div>
+                    )}
+                    {Object.keys(errors).length > 0 && (
+                        <div className="mb-4 rounded-md bg-red-50 p-4 text-red-800">
+                            Gagal menyimpan konfigurasi. Periksa field yang ditandai merah di bawah.
+                        </div>
                     )}
 
                     <form onSubmit={submit} className="space-y-6">

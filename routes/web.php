@@ -16,7 +16,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/bot-config', [BotConfigController::class, 'edit'])->name('bot-config.edit');
-        Route::put('/bot-config', [BotConfigController::class, 'update'])->name('bot-config.update');
+        Route::post('/bot-config', [BotConfigController::class, 'update'])->name('bot-config.update');
         Route::post('/bot-config/webhook', [BotConfigController::class, 'setWebhook'])->name('bot-config.webhook');
 
         Route::get('/leads', [LeadController::class, 'index'])->name('leads.index');

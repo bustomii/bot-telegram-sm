@@ -22,6 +22,17 @@ class BotConfigController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
+        $request->merge([
+            'community_link' => $request->input('community_link') ?: null,
+            'hfm_referral_link' => $request->input('hfm_referral_link') ?: null,
+            'hfm_api_url' => $request->input('hfm_api_url') ?: null,
+            'telegram_bot_token' => $request->input('telegram_bot_token') ?: null,
+            'telegram_webhook_secret' => $request->input('telegram_webhook_secret') ?: null,
+            'admin_group_chat_id' => $request->input('admin_group_chat_id') ?: null,
+            'hfm_api_key' => $request->input('hfm_api_key') ?: null,
+            'hfm_ib_id' => $request->input('hfm_ib_id') ?: null,
+        ]);
+
         $validated = $request->validate([
             'telegram_bot_token' => 'nullable|string',
             'telegram_webhook_secret' => 'nullable|string',
@@ -33,7 +44,7 @@ class BotConfigController extends Controller
             'hfm_ib_id' => 'nullable|string',
             'min_deposit' => 'required|numeric|min:0',
             'welcome_message' => 'nullable|string',
-            'is_active' => 'boolean',
+            'is_active' => 'nullable|boolean',
             'pdf_registration' => 'nullable|file|mimes:pdf|max:10240',
             'pdf_ib_step1' => 'nullable|file|mimes:pdf|max:10240',
             'pdf_ib_step2' => 'nullable|file|mimes:pdf|max:10240',
@@ -52,6 +63,10 @@ class BotConfigController extends Controller
             } else {
                 unset($validated[$field]);
             }
+        }
+
+        if (! array_key_exists('is_active', $validated)) {
+            $validated['is_active'] = false;
         }
 
         $settings->update($validated);
