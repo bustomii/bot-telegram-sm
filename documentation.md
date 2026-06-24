@@ -60,6 +60,33 @@ https://domain-anda.com/api/telegram/webhook
 
 Pastikan server dapat diakses HTTPS dari internet.
 
+## Deploy HTTPS (nginx / Cloudflare)
+
+Jika muncul error **Mixed Content** (`http://` diblokir di halaman `https://`), set di `.env` server:
+
+```env
+APP_URL=https://bot.neonn.my.id
+APP_ENV=production
+APP_DEBUG=false
+FORCE_HTTPS=true
+SESSION_SECURE_COOKIE=true
+```
+
+Lalu clear cache:
+
+```bash
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+```
+
+Pastikan reverse proxy (nginx) meneruskan header:
+
+```nginx
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+```
+
 ## Scheduler (Follow-up & Recheck Deposit)
 
 Tambahkan ke crontab:

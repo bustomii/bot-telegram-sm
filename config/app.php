@@ -56,6 +56,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Force HTTPS
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, all generated URLs will use https. Enable this when the
+    | application is served behind an HTTPS reverse proxy (nginx, Cloudflare).
+    |
+    */
+
+    'force_https' => env('FORCE_HTTPS', str_starts_with((string) env('APP_URL', ''), 'https://')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
