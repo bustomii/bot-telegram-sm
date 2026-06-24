@@ -69,10 +69,24 @@ class TelegramService
 
     public function setWebhook(string $url): ?array
     {
-        return Http::post($this->apiUrl('setWebhook'), [
+        if (empty($this->settings->telegram_bot_token)) {
+            return ['ok' => false, 'error_code' => 400, 'description' => 'Bot token is empty'];
+        }
+
+        $response = Http::timeout(30)->post($this->apiUrl('setWebhook'), array_filter([
             'url' => $url,
             'secret_token' => $this->settings->telegram_webhook_secret,
-        ])->json();
+            'allowed_updates' => ['message', 'callback_query'],
+        ]));
+
+        if (! $response->successful()) {
+            Log::error('Telegram setWebhook HTTP error', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+        }
+
+        return $response->json();
     }
 
     public static function inlineKeyboard(array $buttons): array

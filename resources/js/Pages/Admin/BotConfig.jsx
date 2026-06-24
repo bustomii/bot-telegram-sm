@@ -5,7 +5,7 @@ import TextInput from '@/Components/TextInput';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
 
-export default function BotConfig({ settings }) {
+export default function BotConfig({ settings, webhookUrl }) {
     const { flash } = usePage().props;
 
     const { data, setData, post, put, processing, errors } = useForm({
@@ -31,7 +31,13 @@ export default function BotConfig({ settings }) {
     };
 
     const setWebhook = () => {
-        post(route('admin.bot-config.webhook'));
+        put(route('admin.bot-config.update'), {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                post(route('admin.bot-config.webhook'), { preserveScroll: true });
+            },
+        });
     };
 
     return (
@@ -112,7 +118,13 @@ export default function BotConfig({ settings }) {
                                     <label htmlFor="is_active" className="text-sm text-gray-700">Bot Aktif</label>
                                 </div>
 
-                                <PrimaryButton type="button" onClick={setWebhook}>
+                                <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-600">
+                                    <p className="font-medium text-gray-700">Webhook URL:</p>
+                                    <p className="mt-1 break-all font-mono text-xs">{webhookUrl}</p>
+                                    <p className="mt-2 text-xs">Pastikan URL di atas dapat diakses via HTTPS sebelum set webhook.</p>
+                                </div>
+
+                                <PrimaryButton type="button" onClick={setWebhook} disabled={processing}>
                                     Set Webhook Telegram
                                 </PrimaryButton>
                             </div>

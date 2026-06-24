@@ -16,6 +16,7 @@ class BotConfigController extends Controller
     {
         return Inertia::render('Admin/BotConfig', [
             'settings' => BotSetting::current(),
+            'webhookUrl' => route('telegram.webhook'),
         ]);
     }
 
@@ -38,6 +39,10 @@ class BotConfigController extends Controller
             'pdf_ib_step2' => 'nullable|file|mimes:pdf|max:10240',
         ]);
 
+        if (! empty($validated['telegram_bot_token'])) {
+            $validated['telegram_bot_token'] = trim($validated['telegram_bot_token']);
+        }
+
         $settings = BotSetting::current();
 
         foreach (['pdf_registration', 'pdf_ib_step1', 'pdf_ib_step2'] as $field) {
@@ -57,14 +62,27 @@ class BotConfigController extends Controller
     public function setWebhook(): RedirectResponse
     {
         $settings = BotSetting::current();
-        $url = route('telegram.webhook');
 
+        if (empty($settings->telegram_bot_token)) {
+            return back()->with('error', 'Bot Token belum disimpan. Klik "Simpan Konfigurasi" terlebih dahulu.');
+        }
+
+        $url = route('telegram.webhook');
         $result = TelegramService::make()->setWebhook($url);
 
         if (($result['ok'] ?? false) === true) {
-            return back()->with('success', 'Webhook Telegram berhasil diatur.');
+            return back()->with('success', "Webhook Telegram berhasil diatur ke: {$url}");
         }
 
-        return back()->with('error', 'Gagal mengatur webhook: '.($result['description'] ?? 'Unknown error'));
+        $errorCode = $result['error_code'] ?? null;
+        $description = $result['description'] ?? 'Unknown error';
+
+        $message = match ($errorCode) {
+            404 => 'Bot Token tidak valid. Salin ulang token dari @BotFather, simpan konfigurasi, lalu coba lagi.',
+            401 => 'Bot Token ditolak oleh Telegram. Pastikan token benar dan bot belum dihapus.',
+            default => "Gagal mengatur webhook: {$description}",
+        };
+
+        return back()->with('error', $message);
     }
 }
