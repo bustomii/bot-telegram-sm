@@ -38,6 +38,7 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            'telegramBotUsername' => config('messaging.telegram.login_bot_username'),
         ];
     }
 }

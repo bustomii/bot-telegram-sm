@@ -21,5 +21,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         BotSetting::current();
+
+        $this->call(MessagingProviderSeeder::class);
     }
 }

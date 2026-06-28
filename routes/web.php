@@ -1,20 +1,25 @@
 <?php
 
 use App\Http\Controllers\Admin\BotConfigController;
-use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DashboardController as LegacyDashboardController;
 use App\Http\Controllers\Admin\LeadController;
+use App\Http\Controllers\Auth\TelegramAuthController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::get('/', function () {
     return redirect()->route('login');
 });
 
+Route::post('/auth/telegram/callback', [TelegramAuthController::class, 'callback'])
+    ->middleware('guest')
+    ->name('auth.telegram.callback');
+
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard', fn () => redirect()->route('admin.leads.index'))->name('dashboard');
 
     Route::prefix('admin')->name('admin.')->group(function () {
+        Route::get('/overview', [LegacyDashboardController::class, 'index'])->name('overview');
         Route::get('/bot-config', [BotConfigController::class, 'edit'])->name('bot-config.edit');
         Route::match(['put', 'post'], '/bot-config', [BotConfigController::class, 'update'])->name('bot-config.update');
         Route::post('/bot-config/webhook', [BotConfigController::class, 'setWebhook'])->name('bot-config.webhook');

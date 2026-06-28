@@ -16,6 +16,10 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'telegram_id',
+        'telegram_username',
+        'telegram_photo_url',
+        'auth_provider',
     ];
 
     protected $hidden = [
@@ -40,5 +44,10 @@ class User extends Authenticatable
     public function canApprove(): bool
     {
         return $this->role->canApprove();
+    }
+
+    public function messagingAccounts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(MessagingAccount::class);
     }
 }
